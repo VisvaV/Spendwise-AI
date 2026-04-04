@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #7c3aed;
+  --color-secondary: #ec4899;
+  --color-dark: #0a0a0f;
+}
+
+@layer base {
+  body {
+    @apply bg-dark text-white font-sans antialiased;
+  }
+}
+
+@layer components {
+  /* Glassmorphism utility for SpendWise AI */
+  .glass-card {
+    @apply bg-black/40 backdrop-blur-lg border border-white/10 shadow-lg rounded-2xl;
+  }
+  
+  .glass-card-hover {
+    @apply bg-black/40 backdrop-blur-lg border border-white/10 shadow-lg rounded-2xl hover:border-primary/50 hover:shadow-[0_0_15px_rgba(124,58,237,0.3)] transition-all duration-300;
+  }
+}
+
+/* Custom Webkit scrollbar for sleek dark mode */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0a0a0f; 
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a3f; 
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #7c3aed; 
+}

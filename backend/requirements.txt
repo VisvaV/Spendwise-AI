@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+alembic
+python-dotenv
+PyJWT
+bcrypt>=4.1.2
+pymongo
+boto3
+pydantic[email]
+python-multipart
+
+requests
