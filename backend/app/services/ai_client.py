@@ -1,43 +1,68 @@
 import os
 import requests
+from requests.exceptions import RequestException
 
 AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://localhost:8001/api/v1/ai")
 
-def get_fraud_score(employee_id: int, amount: float, category: str, merchant: str, date: str):
-    try:
-        res = requests.post(f"{AI_SERVICE_URL}/fraud-score", json={
-            "employee_id": employee_id,
-            "amount": amount,
-            "category": category,
-            "merchant": merchant,
-            "date": date
-        })
-        if res.status_code == 200:
+def post_with_retry(endpoint: str, payload: dict):
+    url = f"{AI_SERVICE_URL}{endpoint}"
+    for attempt in range(2):
+        try:
+            res = requests.post(url, json=payload, timeout=10)
+            res.raise_for_status()
             return res.json()
-    except Exception as e:
-        print("AI Service Error: ", e)
-    return {"risk_score": 0.0, "risk_flags": [], "recommendation": "APPROVE"}
+        except RequestException as e:
+            print(f"AI Service Error (Attempt {attempt+1}): {e}")
+            if attempt == 1:
+                raise
+
+def get_fraud_score(*args, **kwargs):
+    # Legacy wrapper handled gracefully now
+    payload = kwargs if kwargs else {}
+    if args and len(args) >= 5:
+        payload = {
+            "employee_id": args[0],
+            "amount": args[1],
+            "category": args[2],
+            "merchant": args[3],
+            "date": args[4]
+        }
+    try:
+        return post_with_retry("/fraud-score", payload)
+    except:
+        return {"risk_score": 0.5, "risk_flags": ["AI_SERVICE_UNAVAILABLE"], "recommendation": "REVIEW"}
 
 def get_categorization(title: str, description: str):
     try:
-        res = requests.post(f"{AI_SERVICE_URL}/categorize", json={
-            "title": title,
-            "description": description
-        })
-        if res.status_code == 200:
-            return res.json()
-    except Exception as e:
-        print("AI Service Error: ", e)
-    return {"predicted_category": None, "confidence_score": None}
+        return post_with_retry("/categorize", {"title": title, "description": description})
+    except:
+        return {"predicted_category": None, "confidence_score": None, "method": "fallback"}
 
-def run_ocr_validation(receipt_url: str, claimed_amount: float):
+def run_ocr_validation(receipt_image_url: str, claimed_amount: float, expense_date: str = None):
     try:
-        res = requests.post(f"{AI_SERVICE_URL}/ocr", json={
-            "receipt_image_url": receipt_url,
-            "claimed_amount": claimed_amount
-        })
-        if res.status_code == 200:
-            return res.json()
-    except Exception as e:
-        print("AI Service Error: ", e)
-    return {"match_result": {"amount_match": True}}
+        return post_with_retry("/ocr", {"receipt_image_url": receipt_image_url, "claimed_amount": claimed_amount, "expense_date": expense_date})
+    except:
+        return {"merchant": "UNKNOWN", "date": "UNKNOWN", "extracted_amount": 0.0, "gstin": "UNKNOWN", "receipt_phash": "UNKNOWN", "discrepancy_flags": ["OCR_FAILED"], "match_result": {"amount_match": False, "date_match": False}}
+
+def run_full_analysis(receipt_url: str, claimed_amount: float, title: str, description: str, employee_id: int, category: str, date: str, department_id: int, role: str, recent_same_category_count: int, recent_same_amount_count: int):
+    payload = {
+        "receipt_image_url": receipt_url,
+        "claimed_amount": claimed_amount,
+        "title": title,
+        "description": description,
+        "employee_id": employee_id,
+        "category": category,
+        "date": date,
+        "department_id": department_id,
+        "role": role,
+        "recent_same_category_count": recent_same_category_count,
+        "recent_same_amount_count": recent_same_amount_count
+    }
+    try:
+        return post_with_retry("/analyze", payload)
+    except:
+        return {
+            "ocr": None,
+            "categorization": {"predicted_category": None, "confidence_score": None, "method": "fallback"},
+            "fraud": {"risk_score": 0.5, "risk_flags": ["AI_SERVICE_UNAVAILABLE"], "recommendation": "REVIEW"}
+        }

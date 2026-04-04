@@ -11,6 +11,7 @@ class ExpenseBase(BaseModel):
     expense_date: datetime
     receipt_s3_url: Optional[str] = None
     business_justification: Optional[str] = None
+    team_members: int = 1
 
 class ExpenseCreate(ExpenseBase):
     pass

@@ -2,19 +2,20 @@ import React, { useState, useRef } from 'react';
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { useNavigate } from 'react-router-dom';
-import { UploadCloud, CheckCircle, ShieldAlert, Sparkles, Image as ImageIcon } from 'lucide-react';
+import { UploadCloud, CheckCircle, ShieldAlert, Sparkles, Image as ImageIcon, AlertTriangle } from 'lucide-react';
 
 export default function SubmitExpense() {
-  const [formData, setFormData] = useState({ title: '', amount: '', category: 'Travel', date: '', justification: '', receipt_s3_url: '' });
+  const [formData, setFormData] = useState({ title: '', amount: '', category: 'Travel', date: '', justification: '', receipt_s3_url: '', team_members: 1 });
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [receiptFile, setReceiptFile] = useState(null);
   
-  const fileInputRef = useRef(null);
-
+  const [errorMsg, setErrorMsg] = useState("");
+  const [ocrData, setOcrData] = useState(null);
   
+  const fileInputRef = useRef(null);
   const token = useAuthStore(state => state.token);
   const navigate = useNavigate();
 
@@ -22,6 +23,7 @@ export default function SubmitExpense() {
   const handlePrev = () => setStep(1);
 
   const handleFileUpload = async (event) => {
+    setErrorMsg("");
     const file = event.target.files[0];
     if (!file) return;
 
@@ -29,7 +31,6 @@ export default function SubmitExpense() {
     setIsUploading(true);
 
     try {
-      // 1. Get Pre-signed URL
       const { data } = await axios.post('/api/upload/presigned-url', {
         filename: file.name,
         file_type: file.type
@@ -38,23 +39,34 @@ export default function SubmitExpense() {
       });
 
       const { presigned_post, final_url } = data;
-
-      // 2. Prepare FormData for S3
       const s3FormData = new FormData();
       Object.entries(presigned_post.fields).forEach(([key, value]) => {
         s3FormData.append(key, value);
       });
       s3FormData.append("file", file);
 
-      // 3. Upload to S3 directly
       await axios.post(presigned_post.url, s3FormData, {
         headers: { "Content-Type": "multipart/form-data" }
       });
 
-      // 4. Save URL to state
       setFormData(prev => ({ ...prev, receipt_s3_url: final_url }));
+      
+      // Perform OCR
+      try {
+        // Assume backend proxies /api/ai/ocr to ai-service or ai-service is exposed
+        const ocrRes = await axios.post('/api/ai/ocr', {
+          receipt_image_url: final_url,
+          claimed_amount: parseFloat(formData.amount)
+        }, {
+           headers: { Authorization: `Bearer ${token}` }
+        });
+        setOcrData(ocrRes.data);
+      } catch (ocrErr) {
+        console.error("OCR Preview failed or not routed properly.", ocrErr);
+      }
+      
     } catch (err) {
-      alert("Failed to upload receipt to S3. Policy hook will be bypassed.");
+      setErrorMsg("Failed to upload receipt to S3. Policy hook will be bypassed.");
       console.error(err);
       setReceiptFile(null);
     } finally {
@@ -65,23 +77,23 @@ export default function SubmitExpense() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setErrorMsg("");
     try {
-      // Step 21 Integration: Submit directly triggers backend + ai service
       await axios.post('/api/expenses/', {
         title: formData.title,
         amount: parseFloat(formData.amount),
         category: formData.category,
         expense_date: new Date(formData.date).toISOString(),
         business_justification: formData.justification,
-        receipt_s3_url: formData.receipt_s3_url
-
+        receipt_s3_url: formData.receipt_s3_url,
+        team_members: parseInt(formData.team_members) || 1
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setSuccess(true);
       setTimeout(() => navigate('/dashboard'), 3000);
     } catch (err) {
-      alert("Submission failed. Policy might be violated. Check inputs.");
+      setErrorMsg(err.response?.data?.detail || "Submission failed. Policy might be violated. Check inputs.");
     } finally {
       setIsSubmitting(false);
     }
@@ -109,13 +121,18 @@ export default function SubmitExpense() {
       </div>
 
       <div className="flex items-center gap-4 mb-8 max-w-sm mx-auto">
-        <div className={`h-1 flex-1 rounded-full \${step >= 1 ? 'bg-primary shadow-[0_0_10px_rgba(124,58,237,0.5)]' : 'bg-white/10'}`}></div>
-        <div className={`h-1 flex-1 rounded-full \${step >= 2 ? 'bg-secondary shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-white/10'}`}></div>
+        <div className={`h-1 flex-1 rounded-full ${step >= 1 ? 'bg-primary shadow-[0_0_10px_rgba(124,58,237,0.5)]' : 'bg-white/10'}`}></div>
+        <div className={`h-1 flex-1 rounded-full ${step >= 2 ? 'bg-secondary shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-white/10'}`}></div>
       </div>
 
       <form onSubmit={handleSubmit} className="glass-card p-8">
         {step === 1 && (
           <div className="space-y-6 animate-in slide-in-from-left">
+            {errorMsg && (
+                <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-lg p-3">
+                  {errorMsg}
+                </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">Expense Title</label>
               <input type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required className="w-full bg-black/50 border border-gray-700 rounded-lg p-3 text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors" placeholder="e.g. Flight to Mumbai" />
@@ -126,19 +143,27 @@ export default function SubmitExpense() {
                 <input type="number" step="0.01" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} required className="w-full bg-black/50 border border-gray-700 rounded-lg p-3 text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary font-mono text-xl" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Category (Optional: AI can auto-tag)</label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Category</label>
                 <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full bg-black/50 border border-gray-700 rounded-lg p-3 text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary">
                   <option value="">Let AI Decide</option>
                   <option value="Travel">Travel</option>
                   <option value="Meals">Meals</option>
+                  <option value="Accommodation">Accommodation</option>
                   <option value="Software">Software</option>
                   <option value="Equipment">Equipment</option>
+                  <option value="Training">Training</option>
+                  <option value="Marketing">Marketing</option>
+                  <option value="Miscellaneous">Miscellaneous</option>
                 </select>
               </div>
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Team Members Count</label>
+              <input type="number" min="1" value={formData.team_members} onChange={e => setFormData({...formData, team_members: e.target.value})} required className="w-full bg-black/50 border border-gray-700 rounded-lg p-3 text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary font-mono text-xl" />
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">Date Incurred</label>
-              <input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required className="w-full bg-black/50 border border-gray-700 rounded-lg p-3 text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary [color-scheme:dark]" />
+              <input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required className="w-full bg-black/50 border border-gray-700 rounded-lg p-3 text-white [color-scheme:dark]" />
             </div>
             
             <button type="button" onClick={handleNext} disabled={!formData.title || !formData.amount || !formData.date} className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary hover:to-primary text-white font-medium p-3 rounded-lg transition-all shadow-lg disabled:opacity-50 mt-8">
@@ -173,7 +198,7 @@ export default function SubmitExpense() {
               {isUploading ? (
                 <div className="flex flex-col items-center">
                   <div className="animate-spin border-4 border-secondary border-t-transparent rounded-full w-8 h-8 mb-3"></div>
-                  <p className="text-sm text-secondary">Uploading directly to S3...</p>
+                  <p className="text-sm text-secondary">Uploading & Scanning...</p>
                 </div>
               ) : formData.receipt_s3_url ? (
                 <div className="flex flex-col items-center">
@@ -188,6 +213,39 @@ export default function SubmitExpense() {
                 </>
               )}
             </div>
+            
+            {ocrData && (
+              <div className="glass-card p-4 rounded-lg bg-black/50 border border-white/10 space-y-2 text-sm">
+                <h4 className="font-semibold text-gray-300 mb-3 flex items-center gap-2"><Sparkles size={14} className="text-secondary"/>Receipt Preview (AI Scanned)</h4>
+                <div className="flex justify-between"><span className="text-gray-400">Merchant:</span> <span className="font-medium text-white">{ocrData.merchant}</span></div>
+                <div className="flex justify-between"><span className="text-gray-400">Date:</span> <span className="font-medium text-white">{ocrData.date}</span></div>
+                <div className="flex justify-between items-center mt-2">
+                  <span className="text-gray-400">Amount:</span> 
+                  <span className="flex items-center gap-2 font-mono">
+                    ₹{ocrData.extracted_amount} 
+                    {ocrData.match_result?.amount_match ? 
+                      <CheckCircle size={16} className="text-green-500"/> : 
+                      <ShieldAlert size={16} className="text-yellow-500"/>
+                    }
+                  </span>
+                </div>
+              </div>
+            )}
+            
+            {ocrData && !ocrData.match_result?.amount_match && (
+                <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-500 text-xs rounded-lg p-3 flex items-center gap-2">
+                  <AlertTriangle size={14}/>
+                  <span>
+                    OCR detected ₹{ocrData.extracted_amount} but you claimed ₹{formData.amount}. Please verify before submitting.
+                  </span>
+                </div>
+            )}
+
+            {errorMsg && (
+                <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-lg p-3 mt-4">
+                  {errorMsg}
+                </div>
+            )}
 
             <div className="flex gap-4 pt-4">
               <button type="button" onClick={handlePrev} className="flex-1 bg-white/10 hover:bg-white/20 text-white font-medium p-3 rounded-lg transition-all">

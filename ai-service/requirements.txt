@@ -9,3 +9,6 @@ numpy
 scikit-learn
 pydantic
 requests
+imagehash
+python-dateutil
+opencv-python-headless
