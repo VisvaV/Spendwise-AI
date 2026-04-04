@@ -42,12 +42,15 @@ def process_approval_action(db: Session, expense_id: int, action: str, approver:
     if not expense:
         raise HTTPException(status_code=404, detail="Expense not found")
 
-    # For simplicity, we just look up pending approvals matching the user's role
-    approval = db.query(Approval).filter(
+    query = db.query(Approval).filter(
         Approval.expense_id == expense.id,
-        Approval.action == None,
-        Approval.role_required == approver.role
-    ).first()
+        Approval.action == None
+    )
+    
+    if approver.role != "Admin":
+        query = query.filter(Approval.role_required == approver.role)
+        
+    approval = query.first()
 
     if not approval:
         raise HTTPException(status_code=403, detail="Not authorized to approve at this stage or already acted")

@@ -17,10 +17,15 @@ def act_on_expense(expense_id: int, action_in: ApprovalAction, db: Session = Dep
 @router.get("/pending")
 def get_pending_approvals(db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
     from app.models.schema import Approval, Expense, User as EmployeeUser
-    approvals = db.query(Approval, Expense, EmployeeUser).join(Expense).join(EmployeeUser, Expense.employee_id == EmployeeUser.id).filter(
-        Approval.approver_id == current_user.id,
+    
+    query = db.query(Approval, Expense, EmployeeUser).join(Expense).join(EmployeeUser, Expense.employee_id == EmployeeUser.id).filter(
         Approval.action == None
-    ).all()
+    )
+    
+    if current_user.role != "Admin":
+        query = query.filter(Approval.role_required == current_user.role)
+        
+    approvals = query.all()
     
     results = []
     for approval, expense, employee in approvals:
@@ -33,7 +38,8 @@ def get_pending_approvals(db: Session = Depends(get_db), current_user: User = De
             "expense_date": str(expense.expense_date) if expense.expense_date else "UNKNOWN",
             "employee_name": employee.name,
             "risk_score": expense.risk_score,
-            "risk_flags": [], # DB schema doesn't store flags, defaulting to empty
+            "risk_flags": expense.risk_flags if hasattr(expense, 'risk_flags') and expense.risk_flags else [],
+
             "ai_category": expense.ai_category,
             "ai_confidence": expense.ai_confidence,
             "duplicate_flag": expense.duplicate_flag,

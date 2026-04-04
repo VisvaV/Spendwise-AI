@@ -10,7 +10,7 @@ export default function Layout() {
   const navItems = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { label: 'Submit Expense', path: '/dashboard/submit', icon: Receipt },
-    { label: 'Approvals', path: '/dashboard/approvals', icon: CheckSquare, hide: !['Manager', 'Finance'].includes(user?.role) },
+    { label: 'Approvals', path: '/dashboard/approvals', icon: CheckSquare, hide: !['Manager', 'Finance', 'Senior Approver', 'Admin'].includes(user?.role) },
     { label: 'Finance Risk', path: '/dashboard/finance', icon: BarChart3, hide: user?.role !== 'Finance' },
     { label: 'Admin', path: '/dashboard/admin', icon: Settings, hide: user?.role !== 'Admin' },
   ].filter(item => !item.hide);

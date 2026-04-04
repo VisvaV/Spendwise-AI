@@ -37,17 +37,33 @@ def extract_merchant(img: Image.Image) -> str:
     return "UNKNOWN"
 
 def extract_amount(text: str) -> float:
-    pattern = r'(?:₹|Rs\.?|INR)\s*([\d,]+\.?\d*)'
+    # 1. Broadly search for standard currency tags, or total/net identifiers
+    pattern = r'(?:₹|Rs\.?|INR|Total|Amount|Net|Pay)\s*[:\-]?\s*([\d,]+\.?\d*)'
     matches = re.findall(pattern, text, re.IGNORECASE)
     amounts = []
+    
     for match in matches:
         clean_str = match.replace(',', '')
         try:
             amounts.append(float(clean_str))
         except ValueError:
             pass
+            
     if amounts:
         return max(amounts)
+        
+    # 2. Hard fallback: Just scan the entire document for any standalone realistic decimal value 
+    fallback_pattern = r'\b(\d{1,6}\.\d{2})\b'
+    fallback_matches = re.findall(fallback_pattern, text)
+    for match in fallback_matches:
+        try:
+            amounts.append(float(match))
+        except ValueError:
+            pass
+            
+    if amounts:
+        return max(amounts)
+        
     return 0.0
 
 def extract_date(text: str) -> str:
