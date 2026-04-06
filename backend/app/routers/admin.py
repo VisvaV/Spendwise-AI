@@ -5,7 +5,7 @@ from app.models.schema import User, AuditLog, Budget, PolicyRule
 from app.api.deps import RoleChecker
 
 router = APIRouter()
-admin_role_checker = RoleChecker(["Admin", "admin"])
+admin_role_checker = RoleChecker(["Admin"])  # RoleChecker is now case-insensitive
 
 @router.get("/metrics", dependencies=[Depends(admin_role_checker)])
 def get_admin_metrics(db: Session = Depends(get_db)):
@@ -13,7 +13,7 @@ def get_admin_metrics(db: Session = Depends(get_db)):
     policies_count = db.query(PolicyRule).count()
     budgets_count = db.query(Budget).count()
     logs_count = db.query(AuditLog).count()
-    
+
     return {
         "users_count": users_count,
         "policies_count": policies_count,

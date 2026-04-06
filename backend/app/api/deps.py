@@ -20,20 +20,12 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
-    except JWTError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Could not validate credentials: {str(e)}",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
+    except JWTError:
+        raise credentials_exception
+
     user = db.query(User).filter(User.email == email).first()
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials: User not found in database",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise credentials_exception
     return user
 
 def get_current_active_user(current_user: User = Depends(get_current_user)):
@@ -42,6 +34,7 @@ def get_current_active_user(current_user: User = Depends(get_current_user)):
     return current_user
 
 class RoleChecker:
+    """Case-insensitive role checker. Normalizes both allowed roles and user role to lowercase."""
     def __init__(self, allowed_roles: list):
         self.allowed_roles = [r.lower() for r in allowed_roles]
 

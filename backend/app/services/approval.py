@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from fastapi import HTTPException
-from typing import List
 
 from app.models.schema import ApprovalMatrix, Approval, Expense, User
+
 
 def generate_approval_chain(db: Session, expense: Expense, user: User):
     matrices = db.query(ApprovalMatrix).filter(
@@ -12,30 +13,29 @@ def generate_approval_chain(db: Session, expense: Expense, user: User):
         ApprovalMatrix.amount_min <= expense.amount,
         (ApprovalMatrix.amount_max >= expense.amount) | (ApprovalMatrix.amount_max == None)
     ).all()
-    
+
     if not matrices:
         required_roles = ["Manager"]
     else:
-        # Simple policy: use the first matched policy (in reality, prioritize most specific)
-        required_roles = matrices[0].required_roles
+        required_roles = list(matrices[0].required_roles)
 
     # Rule: If submitter IS the manager -> skip Manager, escalate to Finance
     if user.role.lower() == "manager" and "Manager" in required_roles:
         required_roles.remove("Manager")
         if "Finance" not in required_roles:
             required_roles.insert(0, "Finance")
-    
-    # Generate the chain
+
     base_deadline = datetime.utcnow()
     for role in required_roles:
         base_deadline += timedelta(hours=48)
         approval = Approval(
             expense_id=expense.id,
-            role_required=role,
+            role_required=role,  # stored in Title Case e.g. "Manager"
             deadline_at=base_deadline
         )
         db.add(approval)
     db.commit()
+
 
 def process_approval_action(db: Session, expense_id: int, action: str, approver: User, note: str):
     expense = db.query(Expense).filter(Expense.id == expense_id).first()
@@ -46,14 +46,20 @@ def process_approval_action(db: Session, expense_id: int, action: str, approver:
         Approval.expense_id == expense.id,
         Approval.action == None
     )
-    
-    if approver.role != "Admin":
-        query = query.filter(Approval.role_required == approver.role)
-        
+
+    # Admin can approve any step; others must match their role case-insensitively
+    if approver.role.lower() != "admin":
+        query = query.filter(
+            func.lower(Approval.role_required) == approver.role.lower()
+        )
+
     approval = query.first()
 
     if not approval:
-        raise HTTPException(status_code=403, detail="Not authorized to approve at this stage or already acted")
+        raise HTTPException(
+            status_code=403,
+            detail="Not authorized to approve at this stage or already acted"
+        )
 
     approval.action = action
     approval.approver_id = approver.id
@@ -71,18 +77,23 @@ def process_approval_action(db: Session, expense_id: int, action: str, approver:
     elif action == "PENDING_INFO":
         expense.status = "PENDING_INFO"
     elif action == "APPROVED":
-        # Check if more approvals needed
-        pending = db.query(Approval).filter(Approval.expense_id == expense.id, Approval.action == None).count()
+        # Check if any more approvals are still pending after this one
+        pending = db.query(Approval).filter(
+            Approval.expense_id == expense.id,
+            Approval.action == None
+        ).count()
         if pending == 0:
             expense.status = "APPROVED"
             consume_budget(db, approver.department_id, expense.amount)
         else:
             expense.status = "UNDER_REVIEW"
 
-    # Audit log
     db.add(AuditLog(
-        expense_id=expense.id, actor_id=approver.id,
-        from_state=prev_state, to_state=expense.status, note=note
+        expense_id=expense.id,
+        actor_id=approver.id,
+        from_state=prev_state,
+        to_state=expense.status,
+        note=note
     ))
 
     db.commit()
