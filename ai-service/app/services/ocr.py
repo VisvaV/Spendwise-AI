@@ -30,54 +30,113 @@ def extract_merchant(img: Image.Image) -> str:
     return "UNKNOWN"
 
 def extract_amount(text: str) -> float:
-    # Broadly search for currency signs, total/net identifiers, and common receipt terms worldwide
-    pattern = r'(?:₹|Rs\.?|INR|\$|Total|Amount|Net|Pay|Sum|Due|Cost|USD)\s*[:\-]?\s*([\d,]+\.\d{2})'
-    matches = re.findall(pattern, text, re.IGNORECASE)
     amounts = []
-    
-    for match in matches:
-        clean_str = match.replace(',', '')
+
+    # Strategy 1: keyword and amount on the SAME line (e.g. "Total: 3150.00" or "Total: ₹3,150")
+    same_line_pattern = r'(?:Total|Grand\s*Total|Net\s*Total|Amount|Sub[-\s]?Total|Pay|Due|Sum|Cost|₹|Rs\.?|INR|\$)\s*[:\-=]?\s*([\d,]+(?:\.\d{1,2})?)'
+    for match in re.findall(same_line_pattern, text, re.IGNORECASE):
         try:
-            amounts.append(float(clean_str))
+            amounts.append(float(match.replace(',', '')))
         except ValueError:
             pass
-            
+
     if amounts:
         return max(amounts)
-        
-    # Extremely relaxed fallback: Identify any standalone decimal that looks like a plausible price 
-    # capturing trailing 2 digits mostly to avoid random dates or phone numbers
-    fallback_pattern = r'\b(\d{1,6}[\.,]\d{2})\b'
-    fallback_matches = re.findall(fallback_pattern, text)
-    for match in fallback_matches:
-        clean_str = match.replace(',', '.')
+
+    # Strategy 2: keyword on one line, amount on the NEXT line
+    # Handles OCR output like:  "Total: ="  followed by  "3150"
+    lines = [l.strip() for l in text.split('\n')]
+    keyword_pattern = re.compile(r'(?:Total|Grand\s*Total|Net\s*Total|Amount Due|Pay)', re.IGNORECASE)
+    number_pattern = re.compile(r'^[\$₹Rs\.]*\s*([\d,]+(?:\.\d{1,2})?)$')
+    for i, line in enumerate(lines):
+        if keyword_pattern.search(line):
+            # Check next 1-3 lines for a standalone number
+            for j in range(i + 1, min(i + 4, len(lines))):
+                m = number_pattern.match(lines[j])
+                if m:
+                    try:
+                        amounts.append(float(m.group(1).replace(',', '')))
+                        break
+                    except ValueError:
+                        pass
+
+    if amounts:
+        return max(amounts)
+
+    # Strategy 3: Fallback — largest standalone decimal on the receipt
+    fallback_pattern = r'\b(\d{1,6}[.,]\d{2})\b'
+    for match in re.findall(fallback_pattern, text):
         try:
-            amounts.append(float(clean_str))
+            amounts.append(float(match.replace(',', '.')))
         except ValueError:
             pass
-            
+
     if amounts:
-        # Heavily assume the single largest number on a typical receipt is the Grand Total
         return max(amounts)
-        
-    return 0.0
+
+    # Strategy 4: Last resort — largest plain integer >= 10 on its own line
+    # (catches cases like "3150" with no decimal at all)
+    for line in lines:
+        clean = line.strip().lstrip('₹$Rs. ')
+        if re.fullmatch(r'\d{2,7}', clean):
+            try:
+                amounts.append(float(clean))
+            except ValueError:
+                pass
+
+    return max(amounts) if amounts else 0.0
+
 
 def extract_date(text: str) -> str:
+    # First pass: look for explicit date patterns to avoid fuzzy misfires
+    explicit_patterns = [
+        # "16 May 2024", "16-May-2024", "16/May/2024"
+        r'\b(\d{1,2}[\s\-/](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s\-/]\d{4})\b',
+        # "2024-04-16", "2024/04/16"
+        r'\b(\d{4}[-/]\d{1,2}[-/]\d{1,2})\b',
+        # "16/04/2024", "16-04-2024"
+        r'\b(\d{1,2}[-/]\d{1,2}[-/]\d{4})\b',
+    ]
+    for pat in explicit_patterns:
+        match = re.search(pat, text, re.IGNORECASE)
+        if match:
+            try:
+                parsed_date = parser.parse(match.group(1), fuzzy=False)
+                return parsed_date.strftime("%Y-%m-%d")
+            except (ValueError, OverflowError):
+                pass
+
+    # Second pass: line-by-line strict parse (no fuzzy)
     lines = text.split('\n')
     for line in lines:
-        if len(line.strip()) < 5:
+        line = line.strip()
+        if len(line) < 5:
+            continue
+        # Skip lines that look like addresses, GST numbers, phone numbers etc.
+        if re.search(r'GST|GSTIN|Ph:|Tel:|www\.|@|Karnataka|Bengaluru|Layout', line, re.IGNORECASE):
             continue
         try:
             parsed_date = parser.parse(line, fuzzy=False)
-            return parsed_date.strftime("%Y-%m-%d")
+            # Sanity check: reject years before 2000 or in the far future
+            if 2000 <= parsed_date.year <= 2099:
+                return parsed_date.strftime("%Y-%m-%d")
         except (ValueError, OverflowError):
             pass
-            
+
+    # Third pass: fuzzy parse with year sanity check
+    for line in lines:
+        line = line.strip()
+        if len(line) < 5:
+            continue
+        if re.search(r'GST|GSTIN|Ph:|Tel:|www\.|@|Karnataka|Bengaluru|Layout', line, re.IGNORECASE):
+            continue
         try:
             parsed_date = parser.parse(line, fuzzy=True)
-            return parsed_date.strftime("%Y-%m-%d")
+            if 2000 <= parsed_date.year <= 2099:
+                return parsed_date.strftime("%Y-%m-%d")
         except (ValueError, OverflowError):
             continue
+
     return "UNKNOWN"
 
 def extract_gstin(text: str) -> str:

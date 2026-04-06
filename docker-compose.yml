@@ -50,8 +50,8 @@ services:
       - MONGO_URI=mongodb://root:example@mongo:27017/
       - AI_SERVICE_URL=http://ai-service:8001/api/v1/ai
       - AWS_REGION=${AWS_REGION:-us-east-1}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+#      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+#      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
       - SECRET_KEY=7a2221cf2ae46a28ecfa8517f09e33bbb1b454b6d492a78678363fbd8a5681f2
       - ALGORITHM=HS256
