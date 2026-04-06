@@ -31,83 +31,102 @@ def extract_amount(text: str) -> float:
     amounts = []
     lines = [l.strip() for l in text.split('\n')]
 
-    # Strategy 1a: Match Grand Total / Net Total first, then standalone Total
-    # that is NOT preceded by "Sub" or "Sub-"
-    # We do this by scanning lines manually to avoid substring matching issues
-    grand_total_pattern = re.compile(
-        r'(?:Grand\s*Total|Net\s*Total|Amount\s*Due|Pay|Due)\s*[:\-=]?\s*([\d,]+(?:\.\d{1,2})?)',
-        re.IGNORECASE
-    )
-    # Separate pattern for bare "Total" only on lines that don't contain "Sub"
+    # =====================================================
+    # UPDATED LOGIC: Prioritize Grand Total / Final Total
+    # =====================================================
+
+    # Strategy 1: Strong Grand Total patterns (highest priority)
+    grand_total_patterns = [
+        r'(?:Grand\s*Total|Net\s*Total|Final\s*Total|Total\s*Amount|Amount\s*Payable|Bill\s*Total|Invoice\s*Total)\s*[:\-=]?\s*₹?[\s]*([\d,]+(?:\.\d{1,2})?)',
+        r'(?:Total)\s*[:\-=]?\s*₹?[\s]*([\d,]+(?:\.\d{1,2})?)',  # "Total" but we'll filter later
+    ]
+
+    for pattern in grand_total_patterns:
+        for match in re.findall(pattern, text, re.IGNORECASE):
+            try:
+                amount = float(match.replace(',', ''))
+                amounts.append(amount)
+            except ValueError:
+                pass
+
+    # Strategy 2: Look for lines containing "Total" but NOT "Sub"
+    # This is the key improvement to avoid Sub-Total
     bare_total_pattern = re.compile(
-        r'Total\s*[:\-=]?\s*([\d,]+(?:\.\d{1,2})?)',
+        r'(?<!Sub[-\s]?)(?<!Sub)(Total)\s*[:\-=]?\s*₹?[\s]*([\d,]+(?:\.\d{1,2})?)',
         re.IGNORECASE
     )
 
     for line in lines:
-        for match in grand_total_pattern.findall(line):
+        # Skip any line that contains "Sub" anywhere
+        if 'sub' in line.lower():
+            continue
+            
+        # Match Total only if it's not part of Sub-Total
+        match = bare_total_pattern.search(line)
+        if match:
             try:
-                amounts.append(float(match.replace(',', '')))
+                amount = float(match.group(2).replace(',', ''))
+                amounts.append(amount)
             except ValueError:
                 pass
-        # Only match bare "Total" if "Sub" is NOT on the same line
-        if 'sub' not in line.lower():
-            for match in bare_total_pattern.findall(line):
-                try:
-                    amounts.append(float(match.replace(',', '')))
-                except ValueError:
-                    pass
 
-    if amounts:
-        return max(amounts)
+    # Strategy 3: Look for "Total" on one line and amount on next line (common in receipts)
+    keyword_pattern = re.compile(r'(?:Grand\s*Total|Net\s*Total|Final\s*Total|Total\s*Amount|Bill\s*Total|Invoice\s*Total|Total)', re.IGNORECASE)
+    number_pattern = re.compile(r'^₹?[\s]*([\d,]+(?:\.\d{1,2})?)$')
 
-    # Strategy 1b: Sub-Total and currency symbols (fallback)
-    sub_pattern = r'(?:Sub[-\s]?Total|Amount|Sum|Cost|Rs\.?|INR|\$)\s*[:\-=]?\s*([\d,]+(?:\.\d{1,2})?)'
-    for match in re.findall(sub_pattern, text, re.IGNORECASE):
-        try:
-            amounts.append(float(match.replace(',', '')))
-        except ValueError:
-            pass
-
-    if amounts:
-        return max(amounts)
-
-    # Strategy 2: keyword on one line, amount on the NEXT line
-    keyword_pattern = re.compile(r'(?:Total|Grand\s*Total|Net\s*Total|Amount Due|Pay)', re.IGNORECASE)
-    number_pattern = re.compile(r'^[\$Rs\.]*\s*([\d,]+(?:\.\d{1,2})?)$')
     for i, line in enumerate(lines):
         if keyword_pattern.search(line) and 'sub' not in line.lower():
             for j in range(i + 1, min(i + 4, len(lines))):
                 m = number_pattern.match(lines[j])
                 if m:
                     try:
-                        amounts.append(float(m.group(1).replace(',', '')))
+                        amount = float(m.group(1).replace(',', ''))
+                        amounts.append(amount)
                         break
                     except ValueError:
                         pass
 
+    # If we found any candidate amounts, return the largest one (usually the final total)
     if amounts:
         return max(amounts)
 
-    # Strategy 3: Fallback - largest standalone decimal
-    fallback_pattern = r'\b(\d{1,6}[.,]\d{2})\b'
-    for match in re.findall(fallback_pattern, text):
+    # =====================================================
+    # Fallbacks (only if above strategies fail)
+    # =====================================================
+
+    # Strategy 4: General amount with currency near Total keywords (but still avoid Sub)
+    fallback_pattern = re.compile(
+        r'(?:Total|Grand|Net|Payable|Due)\s*[:\-=]?\s*₹?[\s]*([\d,]+(?:\.\d{1,2})?)',
+        re.IGNORECASE
+    )
+    for match in fallback_pattern.findall(text):
+        if 'sub' not in text.lower():  # extra safety
+            try:
+                amounts.append(float(match.replace(',', '')))
+            except ValueError:
+                pass
+
+    if amounts:
+        return max(amounts)
+
+    # Strategy 5: Last resort - largest number that appears after "Total" in the entire text
+    last_resort = re.findall(r'Total[^\d]*([\d,]+(?:\.\d{1,2})?)', text, re.IGNORECASE)
+    for m in last_resort:
         try:
-            amounts.append(float(match.replace(',', '.')))
+            amounts.append(float(m.replace(',', '')))
         except ValueError:
             pass
 
     if amounts:
         return max(amounts)
 
-    # Strategy 4: Last resort - largest plain integer on its own line
-    for line in lines:
-        clean = line.strip().lstrip('Rs. ')
-        if re.fullmatch(r'\d{2,7}', clean):
-            try:
-                amounts.append(float(clean))
-            except ValueError:
-                pass
+    # Strategy 6: Very last fallback - largest standalone number (with 2 decimal or whole)
+    very_last = re.findall(r'\b(\d{1,6}[.,]\d{2})\b', text)
+    for m in very_last:
+        try:
+            amounts.append(float(m.replace(',', '')))
+        except ValueError:
+            pass
 
     return max(amounts) if amounts else 0.0
 
