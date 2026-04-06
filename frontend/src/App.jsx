@@ -18,22 +18,26 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-// Redirects to the correct dashboard index based on role
-const RoleIndex = () => {
-  const user = useAuthStore(state => state.user);
-  const role = user?.role;
-  if (role === 'Admin') return <Navigate to="/dashboard/admin" replace />;
-  if (role === 'Finance') return <Navigate to="/dashboard/finance" replace />;
-  if (role === 'Manager' || role === 'Senior Approver') return <Navigate to="/dashboard/approvals" replace />;
-  return <EmployeeDashboard />;
-};
-
-// Blocks a route if the user's role is not in the allowedRoles list
 const RoleRoute = ({ children, allowedRoles }) => {
   const user = useAuthStore(state => state.user);
   if (!user) return <Navigate to="/login" replace />;
-  if (!allowedRoles.includes(user.role)) return <Navigate to="/dashboard" replace />;
+  
+  const userRole = (user.role || '').toLowerCase();
+  const lowerAllowed = allowedRoles.map(r => r.toLowerCase());
+  
+  if (!lowerAllowed.includes(userRole)) return <Navigate to="/dashboard" replace />;
   return children;
+};
+
+// Redirects to the correct dashboard index based on role
+const RoleIndex = () => {
+  const user = useAuthStore(state => state.user);
+  const role = (user?.role || '').toLowerCase();
+  
+  if (role === 'admin') return <Navigate to="/dashboard/admin" replace />;
+  if (role === 'finance') return <Navigate to="/dashboard/finance" replace />;
+  if (role === 'manager' || role === 'senior approver') return <Navigate to="/dashboard/approvals" replace />;
+  return <EmployeeDashboard />;
 };
 
 export default function App() {
@@ -43,25 +47,25 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/dashboard" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<RoleIndex />} />
-          {/* Employees only — Admins/Managers/Finance should NOT submit expenses */}
+          {/* Employees and Admins can submit expenses */}
           <Route path="submit" element={
-            <RoleRoute allowedRoles={['Employee']}>
+            <RoleRoute allowedRoles={['Employee', 'Admin']}>
               <SubmitExpense />
             </RoleRoute>
           } />
-          {/* Approvers */}
+          {/* Approvers and Admins */}
           <Route path="approvals" element={
-            <RoleRoute allowedRoles={APPROVER_ROLES}>
+            <RoleRoute allowedRoles={['Manager', 'Finance', 'Senior Approver', 'Admin']}>
               <ApprovalDashboard />
             </RoleRoute>
           } />
-          {/* Finance */}
+          {/* Finance and Admins */}
           <Route path="finance" element={
             <RoleRoute allowedRoles={['Finance', 'Admin']}>
               <FinanceDashboard />
             </RoleRoute>
           } />
-          {/* Admin */}
+          {/* Admins only */}
           <Route path="admin" element={
             <RoleRoute allowedRoles={['Admin']}>
               <AdminDashboard />

@@ -7,12 +7,14 @@ export default function Layout() {
   const { user, logout } = useAuthStore();
   const location = useLocation();
 
+  const userRole = (user?.role || '').toLowerCase();
+
   const navItems = [
-    { label: 'My Expenses', path: '/dashboard', icon: LayoutDashboard, hide: !['Employee'].includes(user?.role) },
-    { label: 'Submit Expense', path: '/dashboard/submit', icon: Receipt, hide: !['Employee'].includes(user?.role) },
-    { label: 'Approvals', path: '/dashboard/approvals', icon: CheckSquare, hide: !['Manager', 'Finance', 'Senior Approver', 'Admin'].includes(user?.role) },
-    { label: 'Finance Risk', path: '/dashboard/finance', icon: BarChart3, hide: !['Finance', 'Admin'].includes(user?.role) },
-    { label: 'Admin Panel', path: '/dashboard/admin', icon: Settings, hide: user?.role !== 'Admin' },
+    { label: 'My Expenses', path: '/dashboard', icon: LayoutDashboard, hide: !['employee', 'admin'].includes(userRole) },
+    { label: 'Submit Expense', path: '/dashboard/submit', icon: Receipt, hide: !['employee', 'admin'].includes(userRole) },
+    { label: 'Approvals', path: '/dashboard/approvals', icon: CheckSquare, hide: !['manager', 'finance', 'senior approver', 'admin'].includes(userRole) },
+    { label: 'Finance Risk', path: '/dashboard/finance', icon: BarChart3, hide: !['finance', 'admin'].includes(userRole) },
+    { label: 'Admin Panel', path: '/dashboard/admin', icon: Settings, hide: userRole !== 'admin' },
   ].filter(item => !item.hide);
 
   return (
