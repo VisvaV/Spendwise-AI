@@ -6,13 +6,18 @@ import { Users, Settings, Database, Activity } from 'lucide-react';
 export default function AdminDashboard() {
   const token = useAuthStore(state => state.token);
   const [logs, setLogs] = useState([]);
-  const [metrics, setMetrics] = useState({ users_count: 0, policies_count: 0, budgets_count: 0, logs_count: 0 });
+  const [metrics, setMetrics] = useState({
+    users_count: 0,
+    policies_count: 0,
+    budgets_count: 0,
+    logs_count: 0
+  });
 
   useEffect(() => {
     const fetchAdminData = async () => {
       try {
         const [logsRes, metricsRes] = await Promise.all([
-          axios.get('/api/logs', { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get('/api/logs/', { headers: { Authorization: `Bearer ${token}` } }),       // trailing slash required
           axios.get('/api/admin/metrics', { headers: { Authorization: `Bearer ${token}` } })
         ]);
         setLogs(logsRes.data);
@@ -37,7 +42,10 @@ export default function AdminDashboard() {
           { icon: Database, label: `Budgets (${metrics.budgets_count})`, color: 'text-green-500' },
           { icon: Activity, label: `Service Logs (${metrics.logs_count})`, color: 'text-yellow-500' }
         ].map((item, i) => (
-          <div key={i} className="glass-card hover:bg-white/5 transition-all cursor-pointer p-6 flex flex-col items-center justify-center text-center gap-3">
+          <div
+            key={i}
+            className="glass-card hover:bg-white/5 transition-all cursor-pointer p-6 flex flex-col items-center justify-center text-center gap-3"
+          >
             <item.icon size={32} className={item.color} />
             <span className="font-medium text-gray-200">{item.label}</span>
           </div>
@@ -57,16 +65,26 @@ export default function AdminDashboard() {
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5 font-mono text-gray-300">
-            {logs.length === 0 && <tr><td colSpan={5} className="p-4 text-center">No logs available</td></tr>}
+            {logs.length === 0 && (
+              <tr>
+                <td colSpan={5} className="p-4 text-center text-gray-500">
+                  No logs available
+                </td>
+              </tr>
+            )}
             {logs.map(log => (
               <tr key={log.id} className="hover:bg-white/5 transition-colors">
                 <td className="p-4">{new Date(log.timestamp).toLocaleString()}</td>
                 <td className="p-4">User {log.actor_id}</td>
                 <td className="p-4">EXP-{log.expense_id}</td>
                 <td className="p-4">
-                  <span className="px-2 py-1 bg-white/5 rounded text-gray-400">{log.from_state}</span>
+                  <span className="px-2 py-1 bg-white/5 rounded text-gray-400">
+                    {log.from_state}
+                  </span>
                   <span className="mx-2">→</span>
-                  <span className="px-2 py-1 bg-primary/20 text-primary border border-primary/30 rounded">{log.to_state}</span>
+                  <span className="px-2 py-1 bg-primary/20 text-primary border border-primary/30 rounded">
+                    {log.to_state}
+                  </span>
                 </td>
                 <td className="p-4 text-gray-400">{log.note}</td>
               </tr>
