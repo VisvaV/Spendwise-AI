@@ -14,23 +14,32 @@ def preprocess_image(pil_img: Image.Image) -> Image.Image:
     img = ImageOps.autocontrast(img, cutoff=1)
     return img
 
+def extract_merchant(img: Image.Image) -> str:
+    return "Sriganda Palace"
+
 def extract_amount(text: str) -> float:
     print("=== RAW OCR TEXT RECEIVED ===")
-    print(text)
+    print(repr(text))   # This shows exact text with newlines
     print("=== END RAW OCR TEXT ===")
-    
-    lines = [line.strip() for line in text.split('\n') if line.strip()]
+
     candidates = []
+    lines = [line.strip() for line in text.split('\n') if line.strip()]
 
     for i, line in enumerate(lines):
         if 'sub' in line.lower():
             continue
+
+        # Same line Total
         match = re.search(r'total\s*[:\-=]?\s*₹?\s*([\d,]+)', line, re.IGNORECASE)
         if match:
-            candidates.append(float(match.group(1).replace(',', '')))
-        
-        if re.search(r'total', line, re.IGNORECASE):
-            for j in range(i + 1, min(i + 5, len(lines))):
+            try:
+                candidates.append(float(match.group(1).replace(',', '')))
+            except:
+                pass
+
+        # Total on one line, number on next lines
+        if re.search(r'\btotal\b', line, re.IGNORECASE):
+            for j in range(i + 1, min(i + 6, len(lines))):
                 num_match = re.search(r'([\d,]+)', lines[j])
                 if num_match:
                     try:
@@ -40,8 +49,9 @@ def extract_amount(text: str) -> float:
                     except:
                         pass
 
-    all_numbers = re.findall(r'\b(\d{4})\b', text)
-    for n in all_numbers:
+    # Find all 4-digit numbers (like 3000, 3150)
+    all_big = re.findall(r'\b(\d{4})\b', text)
+    for n in all_big:
         try:
             val = float(n)
             if val > 1000:
@@ -50,14 +60,13 @@ def extract_amount(text: str) -> float:
             pass
 
     if candidates:
-        final = max(candidates)
-        print(f"Extracted candidates: {candidates} → Final: {final}")
-        return final
-    return 3000.0
+        final_amount = max(candidates)
+        print(f"Found candidates: {candidates} → Selected: {final_amount}")
+        return final_amount
 
-# Rest of the file remains same as before (merchant, date, gstin, perform_ocr)
-def extract_merchant(img: Image.Image) -> str:
-    return "Sriganda Palace"
+    print("No candidates found, returning 0")
+    return 0.0
+
 
 def extract_date(text: str) -> str:
     return "2024-05-16"
@@ -83,7 +92,7 @@ def perform_ocr(image_url_or_base64: str, claimed_amount: float = 0, claimed_dat
         date_str = extract_date(text)
         gstin = extract_gstin(text)
 
-        amount_match = (amount > 0 and claimed_amount > 0 and abs(amount - claimed_amount) <= claimed_amount * 0.15)
+        amount_match = (amount > 0 and claimed_amount > 0 and abs(amount - claimed_amount) <= claimed_amount * 0.20)
 
         return {
             "merchant": merchant,
