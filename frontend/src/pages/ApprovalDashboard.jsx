@@ -167,7 +167,7 @@ export default function ApprovalDashboard() {
                     </button>
                     <button
                       onClick={() => handleAction(expense.expense_id, 'REJECTED', rejectReason)}
-                      disabled={rejectReason.length < 10}
+                      disabled={rejectReason.length < 1}
                       className="flex-[2] bg-red-500 hover:bg-red-600 text-white text-xs py-1 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     >
                       Confirm Reject
