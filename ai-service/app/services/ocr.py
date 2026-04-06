@@ -31,7 +31,7 @@ def extract_merchant(img: Image.Image) -> str:
 
 def extract_amount(text: str) -> float:
     # Broadly search for currency signs, total/net identifiers, and common receipt terms worldwide
-    pattern = r'(?:₹|Rs\.?|INR|\$|Total|Amount|Net|Pay|Sum|Due|Cost|USD)\s*[:\-]?\s*([\d,]+\.\d{2})'
+    pattern = r'(?:₹|Rs\.?|INR|\$|Total|Amount|Net|Pay|Sum|Due|Cost|USD)\s*[:\-]?\s*(?:₹|Rs\.?|\$)?\s*([\d,]+(?:\.\d{1,2})?)'
     matches = re.findall(pattern, text, re.IGNORECASE)
     amounts = []
     
@@ -63,6 +63,15 @@ def extract_amount(text: str) -> float:
     return 0.0
 
 def extract_date(text: str) -> str:
+    # Look for standard explicit date strings to prevent dateutil from crashing on random tokens like "Invoice: 7767"
+    date_pattern = r'\b(\d{1,4}[-/]\d{1,2}[-/]\d{1,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4})\b'
+    matches = re.findall(date_pattern, text, re.IGNORECASE)
+    for match in matches:
+        try:
+            return parser.parse(match).strftime("%Y-%m-%d")
+        except:
+            pass
+
     lines = text.split('\n')
     for line in lines:
         if len(line.strip()) < 5:
