@@ -26,13 +26,15 @@ app.include_router(logs.router, prefix="/logs", tags=["logs"])
 def health_check():
     return {"status": "ok"}
 
+from typing import Optional
 from pydantic import BaseModel
 class OCRReq(BaseModel):
     receipt_image_url: str
     claimed_amount: float
+    expense_date: Optional[str] = None
 
 @app.post("/ai/ocr")
 def proxy_ocr_call(req: OCRReq):
     from app.services.ai_client import run_ocr_validation
-    return run_ocr_validation(req.receipt_image_url, req.claimed_amount)
+    return run_ocr_validation(req.receipt_image_url, req.claimed_amount, req.expense_date)
 

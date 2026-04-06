@@ -7,6 +7,9 @@ import imagehash
 from PIL import Image, ImageOps
 import pytesseract
 from dateutil import parser
+import base64
+
+pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
 
 def preprocess_image(pil_img: Image.Image) -> Image.Image:
     # Convert to grayscale
@@ -94,8 +97,12 @@ def extract_gstin(text: str) -> str:
 def perform_ocr(image_url_or_base64: str, claimed_amount: float, claimed_date: str = None) -> dict:
     try:
         if image_url_or_base64.startswith('http'):
-            response = requests.get(image_url_or_base64, timeout=10)
+            response = requests.get(image_url_or_base64, timeout=15)
+            response.raise_for_status()
             img = Image.open(io.BytesIO(response.content))
+        elif image_url_or_base64.startswith('data:image'):
+            b64data = image_url_or_base64.split(',', 1)[1]
+            img = Image.open(io.BytesIO(base64.b64decode(b64data)))
         else:
             img = Image.open(image_url_or_base64)
             
@@ -139,6 +146,9 @@ def perform_ocr(image_url_or_base64: str, claimed_amount: float, claimed_date: s
             }
         }
     except Exception as e:
+        import traceback
+        print(f"[OCR ERROR] {e}")
+        traceback.print_exc()
         return {
             "merchant": "UNKNOWN",
             "date": "UNKNOWN",
