@@ -48,3 +48,26 @@ def generate_presigned_url(request: PreSignRequest, current_user: User = Depends
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+class ViewURLRequest(BaseModel):
+    object_url: str  # the final_url stored in DB
+
+@router.post("/presigned-view")
+def generate_presigned_view_url(request: ViewURLRequest, current_user: User = Depends(get_current_active_user)):
+    try:
+        # Extract the object key from the full S3 URL
+        # URL format: https://<bucket>.s3.<region>.amazonaws.com/<key>
+        from urllib.parse import urlparse
+        parsed = urlparse(request.object_url)
+        object_key = parsed.path.lstrip("/")
+
+        presigned_url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': S3_BUCKET_NAME,
+                'Key': object_key
+            },
+            ExpiresIn=300  # 5 minutes — enough for OCR
+        )
+        return {"presigned_url": presigned_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

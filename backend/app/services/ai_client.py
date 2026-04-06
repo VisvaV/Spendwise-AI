@@ -40,9 +40,37 @@ def get_categorization(title: str, description: str):
 
 def run_ocr_validation(receipt_image_url: str, claimed_amount: float, expense_date: str = None):
     try:
-        return post_with_retry("/ocr", {"receipt_image_url": receipt_image_url, "claimed_amount": claimed_amount, "expense_date": expense_date})
-    except:
-        return {"merchant": "UNKNOWN", "date": "UNKNOWN", "extracted_amount": 0.0, "gstin": "UNKNOWN", "receipt_phash": "UNKNOWN", "discrepancy_flags": ["OCR_FAILED"], "match_result": {"amount_match": False, "date_match": False}}
+        # Generate a short-lived presigned GET URL so the AI service can access the private S3 object
+        import boto3, os
+        from urllib.parse import urlparse
+
+        s3 = boto3.client('s3', region_name=os.getenv("AWS_REGION", "ap-south-1"))
+        parsed = urlparse(receipt_image_url)
+        object_key = parsed.path.lstrip("/")
+        bucket = os.getenv("S3_BUCKET_NAME", "spendwise-bucket-visva")
+
+        presigned_url = s3.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': bucket, 'Key': object_key},
+            ExpiresIn=300
+        )
+
+        return post_with_retry("/ocr", {
+            "receipt_image_url": presigned_url,
+            "claimed_amount": claimed_amount,
+            "expense_date": expense_date
+        })
+    except Exception as e:
+        print(f"[OCR] Presign failed: {e}")
+        return {
+            "merchant": "UNKNOWN",
+            "date": "UNKNOWN",
+            "extracted_amount": 0.0,
+            "gstin": "UNKNOWN",
+            "receipt_phash": "UNKNOWN",
+            "discrepancy_flags": ["OCR_FAILED"],
+            "match_result": {"amount_match": False, "date_match": False}
+        }
 
 def run_full_analysis(receipt_url: str, claimed_amount: float, title: str, description: str, employee_id: int, category: str, date: str, department_id: int, role: str, recent_same_category_count: int, recent_same_amount_count: int):
     payload = {
