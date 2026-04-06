@@ -22,35 +22,41 @@ def extract_amount(text: str) -> float:
     lines = [line.strip() for line in text.split('\n') if line.strip()]
 
     for i, line in enumerate(lines):
-        # Skip any line with "Sub"
         if 'sub' in line.lower():
             continue
 
-        # 1. Look for "Total" on the same line
-        m = re.search(r'total\s*[:=\-]?\s*₹?\s*(\d{3,5})', line, re.IGNORECASE)
-        if m:
-            candidates.append(int(m.group(1)))
+        # Stronger patterns for final total
+        patterns = [
+            r'total\s*[:=\-]?\s*₹?\s*(\d{3,5})',
+            r'grand\s*total.*?(\d{3,5})',
+            r'net\s*total.*?(\d{3,5})',
+            r'payable.*?(\d{3,5})',
+            r'amount\s*due.*?(\d{3,5})'
+        ]
+        
+        for pat in patterns:
+            m = re.search(pat, line, re.IGNORECASE)
+            if m:
+                candidates.append(int(m.group(1)))
 
-        # 2. If line contains "Total", check next few lines for amount (your case)
-        if 'total' in line.lower():
-            for j in range(i + 1, min(i + 5, len(lines))):
+        if re.search(r'total|grand|net|payable', line, re.IGNORECASE):
+            for j in range(i + 1, min(i + 6, len(lines))):
                 n = re.search(r'(\d{3,5})', lines[j])
                 if n:
                     val = int(n.group(1))
-                    if val > 1000:  # realistic bill amount
+                    if 500 < val < 100000:   # more realistic range for bills
                         candidates.append(val)
 
-    # 3. Only consider realistic bill amounts (between 100 and 100000)
-    valid_candidates = [c for c in candidates if 100 < c < 100000]
+    valid = [c for c in candidates if 500 < c < 100000]
 
-    if valid_candidates:
-        final = max(valid_candidates)
-        print(f"Valid candidates: {sorted(set(valid_candidates))}")
+    if valid:
+        final = max(valid)
+        print(f"Valid candidates: {sorted(set(valid))}")
         print(f"FINAL AMOUNT SELECTED: {final}")
         return float(final)
 
-    print("No valid candidates, defaulting to 3000")
-    return 3000.0
+    print("No valid candidates found")
+    return 0.0
 
 def perform_ocr(image_url_or_base64, claimed_amount=0, claimed_date=None):
     try:
