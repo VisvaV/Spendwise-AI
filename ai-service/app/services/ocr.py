@@ -12,36 +12,26 @@ import base64
 pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
 
 def preprocess_image(pil_img: Image.Image) -> Image.Image:
-    # Convert to grayscale
-    gray_img = pil_img.convert('L')
-    # Apply autocontrast
-    gray_img = ImageOps.autocontrast(gray_img)
-    # Convert to numpy array for cv2
-    img_np = np.array(gray_img)
-    # Sharpen
-    kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
-    sharpened = cv2.filter2D(img_np, -1, kernel)
-    return Image.fromarray(sharpened)
+    # Convert to grayscale; Tesseract handles internal binarization better than manual cv2 sharpening for receipts.
+    return pil_img.convert('L')
 
 def extract_merchant(img: Image.Image) -> str:
-    data = pytesseract.image_to_data(img, config='--psm 6', output_type=pytesseract.Output.DICT)
-    # Topmost non-empty high-confidence block
+    # psm 4: Assume a single column of text of variable sizes
+    data = pytesseract.image_to_data(img, config='--psm 4', output_type=pytesseract.Output.DICT)
     for i in range(len(data['text'])):
         text = data['text'][i].strip()
         conf = float(data['conf'][i])
-        if len(text) > 2 and conf > 60:
-            # We assume the first high-confidence line is the merchant
-            # Try to grab the entire line if possible
+        if len(text) > 2 and conf > 50:
             line_num = data['line_num'][i]
             block_num = data['block_num'][i]
-            line_words = [data['text'][j] for j in range(len(data['text'])) if data['block_num'][j] == block_num and data['line_num'][j] == line_num and float(data['conf'][j]) > 60]
+            line_words = [data['text'][j] for j in range(len(data['text'])) if data['block_num'][j] == block_num and data['line_num'][j] == line_num and float(data['conf'][j]) > 50]
             if line_words:
                 return " ".join(line_words).strip()
     return "UNKNOWN"
 
 def extract_amount(text: str) -> float:
-    # 1. Broadly search for standard currency tags, or total/net identifiers
-    pattern = r'(?:₹|Rs\.?|INR|Total|Amount|Net|Pay)\s*[:\-]?\s*([\d,]+\.?\d*)'
+    # Broadly search for currency signs, total/net identifiers, and common receipt terms worldwide
+    pattern = r'(?:₹|Rs\.?|INR|\$|Total|Amount|Net|Pay|Sum|Due|Cost|USD)\s*[:\-]?\s*([\d,]+\.\d{2})'
     matches = re.findall(pattern, text, re.IGNORECASE)
     amounts = []
     
@@ -55,16 +45,19 @@ def extract_amount(text: str) -> float:
     if amounts:
         return max(amounts)
         
-    # 2. Hard fallback: Just scan the entire document for any standalone realistic decimal value 
-    fallback_pattern = r'\b(\d{1,6}\.\d{2})\b'
+    # Extremely relaxed fallback: Identify any standalone decimal that looks like a plausible price 
+    # capturing trailing 2 digits mostly to avoid random dates or phone numbers
+    fallback_pattern = r'\b(\d{1,6}[\.,]\d{2})\b'
     fallback_matches = re.findall(fallback_pattern, text)
     for match in fallback_matches:
+        clean_str = match.replace(',', '.')
         try:
-            amounts.append(float(match))
+            amounts.append(float(clean_str))
         except ValueError:
             pass
             
     if amounts:
+        # Heavily assume the single largest number on a typical receipt is the Grand Total
         return max(amounts)
         
     return 0.0
@@ -109,7 +102,8 @@ def perform_ocr(image_url_or_base64: str, claimed_amount: float, claimed_date: s
         phash_val = str(imagehash.phash(img))
         processed_img = preprocess_image(img)
         
-        text = pytesseract.image_to_string(processed_img, config='--psm 6')
+        # PSM 4 parses columns better (like quantity vs price on receipts)
+        text = pytesseract.image_to_string(processed_img, config='--psm 4')
         
         merchant = extract_merchant(processed_img)
         extracted_amount = extract_amount(text)
