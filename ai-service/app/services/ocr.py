@@ -31,19 +31,38 @@ def extract_amount(text: str) -> float:
     amounts = []
     lines = [l.strip() for l in text.split('\n')]
 
-    # Strategy 1a: Grand total keywords on the SAME line (Sub-Total excluded here)
-    grand_total_pattern = r'(?:Grand\s*Total|Net\s*Total|Total|Amount\s*Due|Pay|Due)\s*[:\-=]?\s*([\d,]+(?:\.\d{1,2})?)'
-    for match in re.findall(grand_total_pattern, text, re.IGNORECASE):
-        try:
-            amounts.append(float(match.replace(',', '')))
-        except ValueError:
-            pass
+    # Strategy 1a: Match Grand Total / Net Total first, then standalone Total
+    # that is NOT preceded by "Sub" or "Sub-"
+    # We do this by scanning lines manually to avoid substring matching issues
+    grand_total_pattern = re.compile(
+        r'(?:Grand\s*Total|Net\s*Total|Amount\s*Due|Pay|Due)\s*[:\-=]?\s*([\d,]+(?:\.\d{1,2})?)',
+        re.IGNORECASE
+    )
+    # Separate pattern for bare "Total" only on lines that don't contain "Sub"
+    bare_total_pattern = re.compile(
+        r'Total\s*[:\-=]?\s*([\d,]+(?:\.\d{1,2})?)',
+        re.IGNORECASE
+    )
+
+    for line in lines:
+        for match in grand_total_pattern.findall(line):
+            try:
+                amounts.append(float(match.replace(',', '')))
+            except ValueError:
+                pass
+        # Only match bare "Total" if "Sub" is NOT on the same line
+        if 'sub' not in line.lower():
+            for match in bare_total_pattern.findall(line):
+                try:
+                    amounts.append(float(match.replace(',', '')))
+                except ValueError:
+                    pass
 
     if amounts:
         return max(amounts)
 
-    # Strategy 1b: Sub-Total and currency symbols (only if no grand total found above)
-    sub_pattern = r'(?:Sub[-\s]?Total|Amount|Sum|Cost|₹|Rs\.?|INR|\$)\s*[:\-=]?\s*([\d,]+(?:\.\d{1,2})?)'
+    # Strategy 1b: Sub-Total and currency symbols (fallback)
+    sub_pattern = r'(?:Sub[-\s]?Total|Amount|Sum|Cost|Rs\.?|INR|\$)\s*[:\-=]?\s*([\d,]+(?:\.\d{1,2})?)'
     for match in re.findall(sub_pattern, text, re.IGNORECASE):
         try:
             amounts.append(float(match.replace(',', '')))
@@ -55,9 +74,9 @@ def extract_amount(text: str) -> float:
 
     # Strategy 2: keyword on one line, amount on the NEXT line
     keyword_pattern = re.compile(r'(?:Total|Grand\s*Total|Net\s*Total|Amount Due|Pay)', re.IGNORECASE)
-    number_pattern = re.compile(r'^[\$₹Rs\.]*\s*([\d,]+(?:\.\d{1,2})?)$')
+    number_pattern = re.compile(r'^[\$Rs\.]*\s*([\d,]+(?:\.\d{1,2})?)$')
     for i, line in enumerate(lines):
-        if keyword_pattern.search(line):
+        if keyword_pattern.search(line) and 'sub' not in line.lower():
             for j in range(i + 1, min(i + 4, len(lines))):
                 m = number_pattern.match(lines[j])
                 if m:
@@ -83,7 +102,7 @@ def extract_amount(text: str) -> float:
 
     # Strategy 4: Last resort - largest plain integer on its own line
     for line in lines:
-        clean = line.strip().lstrip('₹$Rs. ')
+        clean = line.strip().lstrip('Rs. ')
         if re.fullmatch(r'\d{2,7}', clean):
             try:
                 amounts.append(float(clean))
