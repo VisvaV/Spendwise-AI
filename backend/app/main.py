@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import auth, departments, users, expenses, approvals, budgets, upload, logs
+from app.routers import auth, departments, users, expenses, approvals, budgets, upload, logs, admin, finance
 
 app = FastAPI(title="SpendWise AI API", version="1.0.0")
 
@@ -21,6 +21,8 @@ app.include_router(approvals.router, prefix="/approvals", tags=["approvals"])
 app.include_router(budgets.router, prefix="/budgets", tags=["budgets"])
 app.include_router(upload.router, prefix="/upload", tags=["upload"])
 app.include_router(logs.router, prefix="/logs", tags=["logs"])
+app.include_router(admin.router, prefix="/admin", tags=["admin"])
+app.include_router(finance.router, prefix="/finance", tags=["finance"])
 
 @app.get("/health")
 def health_check():

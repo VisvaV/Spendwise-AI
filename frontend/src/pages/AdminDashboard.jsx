@@ -6,17 +6,22 @@ import { Users, Settings, Database, Activity } from 'lucide-react';
 export default function AdminDashboard() {
   const token = useAuthStore(state => state.token);
   const [logs, setLogs] = useState([]);
+  const [metrics, setMetrics] = useState({ users_count: 0, policies_count: 0, budgets_count: 0, logs_count: 0 });
 
   useEffect(() => {
-    const fetchLogs = async () => {
+    const fetchAdminData = async () => {
       try {
-        const res = await axios.get('/api/logs', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setLogs(res.data);
-      } catch (e) {}
+        const [logsRes, metricsRes] = await Promise.all([
+          axios.get('/api/logs', { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get('/api/admin/metrics', { headers: { Authorization: `Bearer ${token}` } })
+        ]);
+        setLogs(logsRes.data);
+        setMetrics(metricsRes.data);
+      } catch (e) {
+        console.error("Failed to fetch admin data", e);
+      }
     };
-    fetchLogs();
+    fetchAdminData();
   }, [token]);
 
   return (
@@ -27,10 +32,10 @@ export default function AdminDashboard() {
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
-          { icon: Users, label: 'Manage Users', color: 'text-primary' },
-          { icon: Settings, label: 'Policy Matrix', color: 'text-secondary' },
-          { icon: Database, label: 'Budgets', color: 'text-green-500' },
-          { icon: Activity, label: 'Service Health', color: 'text-yellow-500' }
+          { icon: Users, label: `Manage Users (${metrics.users_count})`, color: 'text-primary' },
+          { icon: Settings, label: `Policy Rules (${metrics.policies_count})`, color: 'text-secondary' },
+          { icon: Database, label: `Budgets (${metrics.budgets_count})`, color: 'text-green-500' },
+          { icon: Activity, label: `Service Logs (${metrics.logs_count})`, color: 'text-yellow-500' }
         ].map((item, i) => (
           <div key={i} className="glass-card hover:bg-white/5 transition-all cursor-pointer p-6 flex flex-col items-center justify-center text-center gap-3">
             <item.icon size={32} className={item.color} />

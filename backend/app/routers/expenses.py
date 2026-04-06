@@ -111,7 +111,9 @@ def submit_expense(expense_in: ExpenseCreate, db: Session = Depends(get_db), cur
 
 @router.get("/", response_model=List[ExpenseResponse])
 def my_expenses(skip: int = Query(0, ge=0), limit: int = Query(50, le=100), db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
-    return db.query(Expense).filter(Expense.employee_id == current_user.id).offset(skip).limit(limit).all()
+    if current_user.role.lower() == "admin":
+        return db.query(Expense).order_by(Expense.submitted_at.desc()).offset(skip).limit(limit).all()
+    return db.query(Expense).filter(Expense.employee_id == current_user.id).order_by(Expense.submitted_at.desc()).offset(skip).limit(limit).all()
 
 @router.get("/{expense_id}", response_model=ExpenseResponse)
 def get_expense(expense_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):

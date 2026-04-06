@@ -2,20 +2,33 @@ import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid } from 'recharts';
 import { ShieldAlert, TrendingUp, AlertOctagon } from 'lucide-react';
 
-const riskData = [
-  { name: 'Low Risk', value: 400, color: '#22c55e' },
-  { name: 'Medium Risk', value: 150, color: '#eab308' },
-  { name: 'High Risk', value: 45, color: '#ef4444' }
-];
-
-const categorySpend = [
-  { name: 'Jan', Travel: 4000, Meals: 2400, Equipment: 2400 },
-  { name: 'Feb', Travel: 3000, Meals: 1398, Equipment: 2210 },
-  { name: 'Mar', Travel: 2000, Meals: 9800, Equipment: 2290 },
-  { name: 'Apr', Travel: 2780, Meals: 3908, Equipment: 2000 },
-];
+import axios from 'axios';
+import { useAuthStore } from '../store/authStore';
 
 export default function FinanceDashboard() {
+  const token = useAuthStore(state => state.token);
+  const [metrics, setMetrics] = useState({
+    total_pipeline: 0,
+    flagged_count: 0,
+    policy_breaches: 0,
+    risk_data: [],
+    category_spend: []
+  });
+
+  React.useEffect(() => {
+    const fetchMetrics = async () => {
+      try {
+        const res = await axios.get('/api/finance/metrics', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setMetrics(res.data);
+      } catch (e) {
+        console.error("Failed to fetch finance metrics", e);
+      }
+    };
+    fetchMetrics();
+  }, [token]);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -32,19 +45,19 @@ export default function FinanceDashboard() {
           <div className="flex items-center gap-3 text-gray-400 mb-2">
             <TrendingUp size={20} className="text-primary"/> Total Pipeline
           </div>
-          <p className="text-3xl font-mono text-white">₹2,45,000</p>
+          <p className="text-3xl font-mono text-white">₹{metrics.total_pipeline.toLocaleString('en-IN')}</p>
         </div>
         <div className="glass-card p-6 border-t-2 border-red-500">
           <div className="flex items-center gap-3 text-gray-400 mb-2">
             <ShieldAlert size={20} className="text-red-500"/> Flagged by AI
           </div>
-          <p className="text-3xl font-mono text-white">45</p>
+          <p className="text-3xl font-mono text-white">{metrics.flagged_count}</p>
         </div>
         <div className="glass-card p-6 border-t-2 border-secondary">
           <div className="flex items-center gap-3 text-gray-400 mb-2">
             <AlertOctagon size={20} className="text-secondary"/> Policy Breaches
           </div>
-          <p className="text-3xl font-mono text-white">12</p>
+          <p className="text-3xl font-mono text-white">{metrics.policy_breaches}</p>
         </div>
       </div>
 
@@ -54,8 +67,8 @@ export default function FinanceDashboard() {
           <div className="flex-1">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={riskData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} innerRadius={60} stroke="none">
-                  {riskData.map((entry, index) => <Cell key={`cell-\${index}`} fill={entry.color} />)}
+                <Pie data={metrics.risk_data} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} innerRadius={60} stroke="none">
+                  {metrics.risk_data.map((entry, index) => <Cell key={`cell-\${index}`} fill={entry.color} />)}
                 </Pie>
                 <Tooltip contentStyle={{ backgroundColor: '#0a0a0f', borderColor: '#333', borderRadius: '8px' }} />
               </PieChart>
@@ -67,14 +80,14 @@ export default function FinanceDashboard() {
           <h3 className="text-lg font-bold mb-4">Spend By Category (YTD)</h3>
           <div className="flex-1">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={categorySpend}>
+              <BarChart data={metrics.category_spend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
                 <XAxis dataKey="name" stroke="#666" tickLine={false} />
                 <YAxis stroke="#666" tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={{ backgroundColor: '#0a0a0f', borderColor: '#333', borderRadius: '8px' }} />
-                <Bar dataKey="Travel" stackId="a" fill="#7c3aed" radius={[0,0,0,0]} />
-                <Bar dataKey="Meals" stackId="a" fill="#06b6d4" radius={[0,0,0,0]} />
-                <Bar dataKey="Equipment" stackId="a" fill="#3b82f6" radius={[4,4,0,0]} />
+                {Object.keys(metrics.category_spend[0] || {}).filter(k => k !== 'name').map((catKey, i) => (
+                   <Bar key={catKey} dataKey={catKey} stackId="a" fill={['#7c3aed', '#06b6d4', '#3b82f6', '#ec4899', '#f59e0b'][i % 5]} radius={i === 0 ? [0,0,0,0] : [4,4,0,0]} />
+                ))}
               </BarChart>
             </ResponsiveContainer>
           </div>
