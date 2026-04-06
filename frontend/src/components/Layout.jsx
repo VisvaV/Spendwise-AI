@@ -10,8 +10,8 @@ export default function Layout() {
   const userRole = (user?.role || '').toLowerCase();
 
   const navItems = [
-    { label: 'My Expenses', path: '/dashboard', icon: LayoutDashboard, hide: !['employee', 'admin'].includes(userRole) },
-    { label: 'Submit Expense', path: '/dashboard/submit', icon: Receipt, hide: !['employee', 'admin'].includes(userRole) },
+    { label: 'My Expenses', path: '/dashboard', icon: LayoutDashboard, hide: userRole !== 'employee' },
+    { label: 'Submit Expense', path: '/dashboard/submit', icon: Receipt, hide: userRole !== 'employee' },
     { label: 'Approvals', path: '/dashboard/approvals', icon: CheckSquare, hide: !['manager', 'finance', 'senior approver', 'admin'].includes(userRole) },
     { label: 'Finance Risk', path: '/dashboard/finance', icon: BarChart3, hide: !['finance', 'admin'].includes(userRole) },
     { label: 'Admin Panel', path: '/dashboard/admin', icon: Settings, hide: userRole !== 'admin' },

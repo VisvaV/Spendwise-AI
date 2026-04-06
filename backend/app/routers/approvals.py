@@ -17,13 +17,16 @@ def act_on_expense(expense_id: int, action_in: ApprovalAction, db: Session = Dep
 @router.get("/pending")
 def get_pending_approvals(db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
     from app.models.schema import Approval, Expense, User as EmployeeUser
+    from sqlalchemy import func
     
     query = db.query(Approval, Expense, EmployeeUser).join(Expense).join(EmployeeUser, Expense.employee_id == EmployeeUser.id).filter(
         Approval.action == None
     )
     
     if current_user.role != "Admin":
-        query = query.filter(Approval.role_required == current_user.role)
+        query = query.filter(
+            func.lower(Approval.role_required) == func.lower(current_user.role)
+        )
         
     approvals = query.all()
     
@@ -35,7 +38,7 @@ def get_pending_approvals(db: Session = Depends(get_db), current_user: User = De
             "expense_title": expense.title,
             "expense_amount": expense.amount,
             "expense_category": expense.category,
-            "expense_date": str(expense.expense_date) if expense.expense_date else "UNKNOWN",
+            "expense_date": str(expense.submitted_at) if expense.submitted_at else "UNKNOWN",
             "employee_name": employee.name,
             "risk_score": expense.risk_score,
             "risk_flags": expense.risk_flags if hasattr(expense, 'risk_flags') and expense.risk_flags else [],

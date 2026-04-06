@@ -49,7 +49,7 @@ export default function App() {
           <Route index element={<RoleIndex />} />
           {/* Employees and Admins can submit expenses */}
           <Route path="submit" element={
-            <RoleRoute allowedRoles={['Employee', 'Admin']}>
+            <RoleRoute allowedRoles={['Employee']}>
               <SubmitExpense />
             </RoleRoute>
           } />
